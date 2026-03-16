@@ -4,10 +4,11 @@ from datetime import datetime, time  # time adalah tipe datetime.time
 import time as mod_time  # alias untuk modul time
 from dateutil.relativedelta import relativedelta
 from utils import (
-    authenticate_user1, save_internship_data, create_excel_sheet, load_data_cached, load_data_for_login, update_data_duplikat, delete_internship_data,
-    load_data, convert_tanggal, append_to_sheet, validasi_data, hitung_umut, update_internship_data, parse_tanggal_ke_string, refresh_data_in_session, parse_time
+    authenticate_user1, save_internship_data, create_excel_sheet, load_data_cached, load_data_for_login, update_data_duplikat, delete_internship_data, get_departemen_data, save_departemen_data,
+    load_data, convert_tanggal, append_to_sheet, validasi_data, hitung_umut, update_internship_data, parse_tanggal_ke_string, refresh_data_in_session, parse_time, update_departemen_data, delete_departemen_data
 )
 from config import SPREADSHEET_ID, DEPARTEMEN, APP_CONFIG, MESSAGES, departemen_list, jenissekolah_list, periode_list, nama_kolom_data_absen
+from halaman_monitoring_timebreak import halaman_monitoring_timebreak
 import plotly.express as px
 import plotly.graph_objects as go
 import re
@@ -422,7 +423,8 @@ def show_sidebar():
                 "Entry Data",
                 "Magang Analytic",
                 "Update Presensi",
-                "Rekapitulasi Kehadiran"
+                "Rekapitulasi Kehadiran",
+                "Monitoring Timebreak"
             ]
         )
 
@@ -431,7 +433,8 @@ def show_sidebar():
             "Entry Data": "pendaftaran",
             "Magang Analytic": "Magang Analytic",
             "Update Presensi": "Update Presensi",
-            "Rekapitulasi Kehadiran": "Rekapitulasi Kehadiran"
+            "Rekapitulasi Kehadiran": "Rekapitulasi Kehadiran",
+            "Monitoring Timebreak": "monitoring_timebreak"
         }
 
         selected_page = menu_map[menu]
@@ -2718,6 +2721,294 @@ def halaman_Rekapitulasi_Presensi():
         
         else:
             st.info("📭 Belum ada data presensi")
+
+def halaman_monitoring_timebreak():
+    st.title("⏰ Monitoring Timebreak Departemen")
+    st.markdown("Kelola jam istirahat setiap departemen")
+    
+    # Inisialisasi session state
+    if 'edit_mode_timebreak' not in st.session_state:
+        st.session_state.edit_mode_timebreak = False
+    if 'selected_dept_timebreak' not in st.session_state:
+        st.session_state.selected_dept_timebreak = None
+    
+    # Load data departemen
+    df_dept = get_departemen_data()
+    
+    # Tabs
+    tab1, tab2, tab3 = st.tabs(["📋 Data Timebreak", "➕ Tambah Data", "✏️ Edit/Hapus"])
+    
+    # =========================
+    # TAB 1: LIHAT DATA
+    # =========================
+    with tab1:
+        if not df_dept.empty:
+            # Tampilkan data dengan format yang rapi
+            df_display = df_dept.copy()
+            df_display.columns = ['ID', 'Departemen', 'Mulai', 'Akhir']
+            
+            st.dataframe(
+                df_display,
+                use_container_width=True,
+                height=400,
+                column_config={
+                    "ID": "ID Departemen",
+                    "Departemen": "Nama Departemen",
+                    "Mulai": "Mulai Istirahat",
+                    "Akhir": "Akhir Istirahat"
+                }
+            )
+            
+            # Statistik
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Departemen", len(df_dept))
+            with col2:
+                # Hitung durasi istirahat
+                durasi_list = []
+                for _, row in df_dept.iterrows():
+                    try:
+                        mulai = pd.to_datetime(row['Mulai Istirahat'], format='%H:%M')
+                        akhir = pd.to_datetime(row['Akhir Istirahat'], format='%H:%M')
+                        durasi = (akhir - mulai).seconds / 3600
+                        durasi_list.append(durasi)
+                    except:
+                        pass
+                if durasi_list:
+                    avg_durasi = sum(durasi_list) / len(durasi_list)
+                    st.metric("Rata-rata Durasi", f"{avg_durasi:.1f} jam")
+            with col3:
+                st.metric("Total Data", len(df_dept))
+        else:
+            st.info("📭 Belum ada data departemen")
+    
+    # =========================
+    # TAB 2: TAMBAH DATA
+    # =========================
+    with tab2:
+        st.subheader("➕ Tambah Data Timebreak Baru")
+        
+        with st.form("form_tambah_timebreak"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                id_dept = st.number_input(
+                    "ID Departemen *",
+                    min_value=1,
+                    max_value=999,
+                    step=1,
+                    help="Contoh: 101, 102, 103"
+                )
+                nama_dept = st.text_input(
+                    "Nama Departemen *",
+                    placeholder="Contoh: HR&GA, IT, Finance"
+                )
+            
+            with col2:
+                mulai = st.time_input(
+                    "Mulai Istirahat *",
+                    value=time(12, 0),  # default 12:00
+                    step=60  # step 1 menit
+                )
+                akhir = st.time_input(
+                    "Akhir Istirahat *",
+                    value=time(13, 0),  # default 13:00
+                    step=60
+                )
+            
+            # Validasi durasi
+            if mulai and akhir:
+                durasi = (pd.to_datetime(str(akhir)) - pd.to_datetime(str(mulai))).seconds / 3600
+                if durasi <= 0:
+                    st.error("❌ Akhir istirahat harus lebih besar dari mulai istirahat!")
+                elif durasi > 4:
+                    st.warning(f"⚠️ Durasi istirahat {durasi:.1f} jam (cukup lama)")
+                else:
+                    st.info(f"⏱️ Durasi istirahat: {durasi:.1f} jam")
+            
+            st.markdown("---")
+            
+            # Tombol submit
+            col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+            with col_btn2:
+                submitted = st.form_submit_button(
+                    "💾 SIMPAN DATA",
+                    use_container_width=True,
+                    type="primary"
+                )
+            
+            if submitted:
+                if not nama_dept:
+                    st.error("❌ Nama departemen harus diisi!")
+                elif mulai >= akhir:
+                    st.error("❌ Akhir istirahat harus lebih besar dari mulai istirahat!")
+                else:
+                    # Siapkan data
+                    form_data = {
+                        "id_departemen": id_dept,
+                        "nama_departemen": nama_dept,
+                        "mulai_istirahat": mulai.strftime("%H:%M"),
+                        "akhir_istirahat": akhir.strftime("%H:%M")
+                    }
+                    
+                    # Simpan
+                    with st.spinner("Menyimpan data..."):
+                        success, message = save_departemen_data(form_data)
+                        
+                        if success:
+                            st.success(f"✅ {message}")
+                            st.balloons()
+                            # Reset form dengan rerun
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {message}")
+    
+    # =========================
+    # TAB 3: EDIT & HAPUS
+    # =========================
+    with tab3:
+        if not df_dept.empty:
+            st.subheader("✏️ Edit / Hapus Data Timebreak")
+            
+            # Pilih departemen
+            dept_options = df_dept.apply(
+                lambda row: f"{row['id_departemen']} - {row['nama_departemen']}", 
+                axis=1
+            ).tolist()
+            
+            selected = st.selectbox(
+                "Pilih Departemen:",
+                options=dept_options,
+                key="select_dept_timebreak"
+            )
+            
+            if selected:
+                # Parse ID dari string
+                selected_id = int(selected.split(" - ")[0])
+                selected_data = df_dept[df_dept['id_departemen'] == selected_id].iloc[0]
+                
+                # Tombol aksi
+                col1, col2, col3 = st.columns([1, 1, 2])
+                
+                with col1:
+                    if st.button("✏️ Edit", use_container_width=True, type="primary"):
+                        st.session_state.edit_mode_timebreak = True
+                        st.session_state.selected_dept_timebreak = selected_data.to_dict()
+                        st.rerun()
+                
+                with col2:
+                    if st.button("🗑️ Hapus", use_container_width=True):
+                        # Konfirmasi hapus
+                        st.warning(f"Anda akan menghapus: {selected_data['nama_departemen']}")
+                        
+                        col_confirm1, col_confirm2 = st.columns(2)
+                        with col_confirm1:
+                            if st.button("✅ Ya, Hapus", key="confirm_delete_timebreak"):
+                                with st.spinner("Menghapus data..."):
+                                    success, message = delete_departemen_data(selected_id)
+                                    if success:
+                                        st.success(f"✅ {message}")
+                                        refresh_data_in_session()
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ {message}")
+                        with col_confirm2:
+                            if st.button("❌ Batal", key="cancel_delete_timebreak"):
+                                st.rerun()
+            
+            # =========================
+            # FORM EDIT (ditampilkan jika edit mode aktif)
+            # =========================
+            if st.session_state.edit_mode_timebreak and st.session_state.selected_dept_timebreak:
+                st.divider()
+                st.subheader("✏️ Form Edit Data Timebreak")
+                
+                data = st.session_state.selected_dept_timebreak
+                
+                # Parse time dari string
+                try:
+                    mulai_default = pd.to_datetime(data['Mulai Istirahat'], format='%H:%M').time()
+                except:
+                    mulai_default = time(12, 0)
+                
+                try:
+                    akhir_default = pd.to_datetime(data['Akhir Istirahat'], format='%H:%M').time()
+                except:
+                    akhir_default = time(13, 0)
+                
+                with st.form("form_edit_timebreak"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        edit_id = st.number_input(
+                            "ID Departemen *",
+                            value=int(data['id_departemen']),
+                            disabled=True,  # ID tidak bisa diubah
+                            key="edit_id_timebreak"
+                        )
+                        edit_nama = st.text_input(
+                            "Nama Departemen *",
+                            value=data['nama_departemen'],
+                            key="edit_nama_timebreak"
+                        )
+                    
+                    with col2:
+                        edit_mulai = st.time_input(
+                            "Mulai Istirahat *",
+                            value=mulai_default,
+                            key="edit_mulai_timebreak"
+                        )
+                        edit_akhir = st.time_input(
+                            "Akhir Istirahat *",
+                            value=akhir_default,
+                            key="edit_akhir_timebreak"
+                        )
+                    
+                    # Validasi
+                    if edit_mulai and edit_akhir:
+                        durasi = (pd.to_datetime(str(edit_akhir)) - pd.to_datetime(str(edit_mulai))).seconds / 3600
+                        if durasi <= 0:
+                            st.error("❌ Akhir istirahat harus lebih besar dari mulai istirahat!")
+                        else:
+                            st.info(f"⏱️ Durasi istirahat: {durasi:.1f} jam")
+                    
+                    st.markdown("---")
+                    
+                    col_btn1, col_btn2, col_btn3, col_btn4 = st.columns([1, 1, 1, 2])
+                    
+                    with col_btn1:
+                        if st.form_submit_button("💾 Update", use_container_width=True, type="primary"):
+                            if not edit_nama:
+                                st.error("❌ Nama departemen harus diisi!")
+                            elif edit_mulai >= edit_akhir:
+                                st.error("❌ Akhir istirahat harus lebih besar dari mulai istirahat!")
+                            else:
+                                updated_data = {
+                                    "id_departemen": edit_id,
+                                    "nama_departemen": edit_nama,
+                                    "mulai_istirahat": edit_mulai.strftime("%H:%M"),
+                                    "akhir_istirahat": edit_akhir.strftime("%H:%M")
+                                }
+                                
+                                with st.spinner("Mengupdate data..."):
+                                    success, message = update_departemen_data(edit_id, updated_data)
+                                    
+                                    if success:
+                                        st.success(f"✅ {message}")
+                                        st.session_state.edit_mode_timebreak = False
+                                        st.session_state.selected_dept_timebreak = None
+                                        refresh_data_in_session()
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ {message}")
+                    
+                    with col_btn2:
+                        if st.form_submit_button("❌ Batal", use_container_width=True):
+                            st.session_state.edit_mode_timebreak = False
+                            st.session_state.selected_dept_timebreak = None
+                            st.rerun()
+        else:
+            st.info("📭 Belum ada data departemen untuk diedit")
     
 
 # =========================
@@ -2746,6 +3037,8 @@ def main():
         halaman_Update_Presensi()
     elif st.session_state.current_page == 'Rekapitulasi Kehadiran':
         halaman_Rekapitulasi_Presensi()
+    elif st.session_state.current_page == 'monitoring_timebreak':  # <-- TAMBAHKAN INI
+        halaman_monitoring_timebreak()
     else:
         halaman_entry_data()
 
