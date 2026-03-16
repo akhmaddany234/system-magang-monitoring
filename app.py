@@ -8,7 +8,6 @@ from utils import (
     load_data, convert_tanggal, append_to_sheet, validasi_data, hitung_umut, update_internship_data, parse_tanggal_ke_string, refresh_data_in_session, parse_time, update_departemen_data, delete_departemen_data
 )
 from config import SPREADSHEET_ID, DEPARTEMEN, APP_CONFIG, MESSAGES, departemen_list, jenissekolah_list, periode_list, nama_kolom_data_absen
-from halaman_monitoring_timebreak import halaman_monitoring_timebreak
 import plotly.express as px
 import plotly.graph_objects as go
 import re
