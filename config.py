@@ -5,6 +5,25 @@
 # ID Spreadsheet Google Sheets
 SPREADSHEET_ID = "1vfDsjo4QxFVasFWc9EhcSmLGRkwy9xu572nGGGGR1SE"
 
+# Di config.py, tambahkan di bagian SHEETS:
+
+SHEETS = {
+    'AKUN': 'akun',
+    'MAGANG': 'database_magang',
+    'PRESENSI': 'data_presensi',
+    'DEPARTEMEN': 'departemen',  # sudah ada
+    'SUB_DEPARTEMEN': 'sub_departemen',
+    'DOKUMEN': 'Dokumen'
+}
+
+# Tambahkan kolom untuk sheet departemen
+DEPARTEMEN_COLUMNS = {
+    'ID_DEPARTEMEN': 'id_departemen',
+    'NAMA_DEPARTEMEN': 'nama_departemen',
+    'MULAI_ISTIRAHAT': 'Mulai Istirahat',
+    'AKHIR_ISTIRAHAT': 'Akhir Istirahat'
+}
+
 # Nama Sheet
 SHEET_AKUN = "akun"
 SHEET_DATA_MAGANG = "Data Magang Aktif"
