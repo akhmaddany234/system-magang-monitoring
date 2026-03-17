@@ -870,6 +870,40 @@ def hapus_banyak_data_dari_sheets(sheet_name, hapus_list):
         
     except Exception as e:
         return False, str(e)
+
+def hapus_data_by_periode(sheet_name, tgl_awal, tgl_akhir):
+    """
+    Menghapus data presensi berdasarkan periode tanggal
+    
+    Args:
+        sheet_name (str): Nama sheet (biasanya "data_presensi")
+        tgl_awal (date): Tanggal awal periode
+        tgl_akhir (date): Tanggal akhir periode
+    
+    Returns:
+        tuple: (success, message)
+    """
+    try:
+        worksheet = get_worksheet(sheet_name)
+        if not worksheet:
+            return False, "Gagal mendapatkan worksheet"
+        
+        # Ambil semua data
+        all_values = worksheet.get_all_values()
+        
+        if not all_values or len(all_values) <= 1:
+            return False, "Sheet kosong atau hanya berisi header"
+        
+        header = all_values[0]
+        
+        # Cari indeks kolom Tanggal
+        try:
+            tgl_col_idx = header.index('Tanggal')
+        except ValueError:
+            return False, "Kolom Tanggal tidak ditemukan"
+
+
+
 # =========================
 # FUNGSI REKAPITULASI KEHADIRAN
 # =========================
