@@ -870,39 +870,72 @@ def hapus_banyak_data_dari_sheets(sheet_name, hapus_list):
         
     except Exception as e:
         return False, str(e)
-
+    
 def hapus_data_by_periode(sheet_name, tgl_awal, tgl_akhir):
     """
-    Menghapus data presensi berdasarkan periode tanggal
-    
-    Args:
-        sheet_name (str): Nama sheet (biasanya "data_presensi")
-        tgl_awal (date): Tanggal awal periode
-        tgl_akhir (date): Tanggal akhir periode
-    
-    Returns:
-        tuple: (success, message)
+    Menghapus data presensi berdasarkan periode tanggal menggunakan BATCH UPDATE
     """
     try:
         worksheet = get_worksheet(sheet_name)
         if not worksheet:
-            return False, "Gagal mendapatkan worksheet"
+            return False, "Gagal mendapatkan worksheet", 0
         
         # Ambil semua data
         all_values = worksheet.get_all_values()
         
         if not all_values or len(all_values) <= 1:
-            return False, "Sheet kosong atau hanya berisi header"
+            return False, "Sheet kosong atau hanya berisi header", 0
         
         header = all_values[0]
+        data_rows = all_values[1:]  # Data tanpa header
         
         # Cari indeks kolom Tanggal
         try:
             tgl_col_idx = header.index('Tanggal')
         except ValueError:
-            return False, "Kolom Tanggal tidak ditemukan"
-
-
+            return False, "Kolom Tanggal tidak ditemukan", 0
+        
+        # Konversi tanggal awal/akhir
+        tgl_awal_dt = pd.Timestamp(tgl_awal)
+        tgl_akhir_dt = pd.Timestamp(tgl_akhir)
+        
+        # Siapkan data baru (HANYA data yang TIDAK dihapus)
+        new_data = [header]  # Mulai dengan header
+        
+        for row in data_rows:
+            if len(row) <= tgl_col_idx:
+                new_data.append(row)
+                continue
+                
+            tgl_str = row[tgl_col_idx].strip()
+            
+            try:
+                tgl_dt = pd.to_datetime(tgl_str, format='%d/%m/%Y', errors='coerce')
+                
+                # Jika TIDAK dalam periode hapus, simpan
+                if pd.isna(tgl_dt) or not (tgl_awal_dt <= tgl_dt <= tgl_akhir_dt):
+                    new_data.append(row)
+            except:
+                new_data.append(row)
+        
+        jumlah_hapus = len(data_rows) - (len(new_data) - 1)  # -1 karena header
+        
+        if jumlah_hapus == 0:
+            return False, f"Tidak ada data pada periode {tgl_awal.strftime('%d/%m/%Y')} - {tgl_akhir.strftime('%d/%m/%Y')}", 0
+        
+        # ============================================
+        # BATCH UPDATE: KOSONGKAN SHEET DAN TULIS ULANG
+        # ============================================
+        # Clear seluruh sheet
+        worksheet.clear()
+        
+        # Tulis ulang semua data (header + data yang tidak dihapus)
+        worksheet.update('A1', new_data, value_input_option='USER_ENTERED')
+        
+        return True, f"Berhasil menghapus {jumlah_hapus} data", jumlah_hapus
+        
+    except Exception as e:
+        return False, str(e), 0
 
 # =========================
 # FUNGSI REKAPITULASI KEHADIRAN
@@ -998,126 +1031,3 @@ def create_excel_sheet(writer, df, sheet_name, title):
     for i, col in enumerate(df.columns):
         max_len = max(df[col].astype(str).map(len).max(), len(col)) + 2
         worksheet.set_column(i, i, max_len)
-
-# Tambahkan fungsi-fungsi ini di utils.py
-
-def get_departemen_data():
-    """
-    Mengambil data departemen dari sheet
-    """
-    try:
-        df = load_data_cached("departemen")
-        return df
-    except Exception as e:
-        st.error(f"Gagal memuat data departemen: {e}")
-        return pd.DataFrame()
-
-def save_departemen_data(form_data):
-    """
-    Menyimpan data departemen baru
-    """
-    try:
-        spreadsheet = get_spreadsheet()
-        if not spreadsheet:
-            return False, "Gagal terhubung ke database"
-        
-        worksheet = spreadsheet.worksheet("departemen")
-        
-        # Cek duplikat ID
-        df = get_departemen_data()
-        if str(form_data["id_departemen"]) in df["id_departemen"].astype(str).values:
-            return False, f"ID Departemen {form_data['id_departemen']} sudah ada!"
-        
-        # Siapkan data baru
-        new_row = [
-            form_data["id_departemen"],
-            form_data["nama_departemen"],
-            form_data["mulai_istirahat"],
-            form_data["akhir_istirahat"]
-        ]
-        
-        # Tambahkan di baris ke-2 (setelah header)
-        worksheet.insert_row(new_row, index=2)
-        
-        # Refresh cache
-        refresh_sheet_cache("departemen")
-        
-        return True, "Data departemen berhasil disimpan!"
-        
-    except Exception as e:
-        return False, f"Error: {str(e)}"
-
-def update_departemen_data(id_departemen, updated_data):
-    """
-    Mengupdate data departemen
-    """
-    try:
-        spreadsheet = get_spreadsheet()
-        if not spreadsheet:
-            return False, "Gagal terhubung ke database"
-        
-        worksheet = spreadsheet.worksheet("departemen")
-        
-        # Ambil semua data
-        all_data = worksheet.get_all_values()
-        
-        # Cari baris dengan ID yang sesuai
-        for i, row in enumerate(all_data[1:], start=2):
-            if len(row) > 0 and str(row[0]) == str(id_departemen):
-                
-                # Siapkan data update
-                row_data = [
-                    str(updated_data["id_departemen"]),
-                    updated_data["nama_departemen"],
-                    updated_data["mulai_istirahat"],
-                    updated_data["akhir_istirahat"]
-                ]
-                
-                # Update baris
-                update_range = f'A{i}:D{i}'
-                worksheet.update(update_range, [row_data])
-                
-                # Refresh cache
-                refresh_sheet_cache("departemen")
-                
-                return True, "Data berhasil diupdate!"
-        
-        return False, f"ID Departemen {id_departemen} tidak ditemukan"
-        
-    except Exception as e:
-        return False, f"Error: {str(e)}"
-
-def delete_departemen_data(id_departemen):
-    """
-    Menghapus data departemen
-    """
-    try:
-        spreadsheet = get_spreadsheet()
-        if not spreadsheet:
-            return False, "Gagal terhubung ke database"
-        
-        worksheet = spreadsheet.worksheet("departemen")
-        
-        # Ambil semua data
-        all_data = worksheet.get_all_values()
-        
-        # Cari baris dengan ID yang sesuai
-        baris_dihapus = []
-        for i, row in enumerate(all_data[1:], start=2):
-            if len(row) > 0 and str(row[0]) == str(id_departemen):
-                baris_dihapus.append(i)
-        
-        if not baris_dihapus:
-            return False, f"ID Departemen {id_departemen} tidak ditemukan"
-        
-        # Hapus dari bawah ke atas
-        for baris in sorted(baris_dihapus, reverse=True):
-            worksheet.delete_rows(baris)
-        
-        # Refresh cache
-        refresh_sheet_cache("departemen")
-        
-        return True, f"Data ID {id_departemen} berhasil dihapus!"
-        
-    except Exception as e:
-        return False, f"Error: {str(e)}"
