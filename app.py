@@ -1975,7 +1975,6 @@ def halaman_Update_Presensi():
                 st.success(f"✅ Tidak ada data pada periode {tgl_awal_str} - {tgl_akhir_str}")
         else:
             st.info("📭 Database presensi kosong")
-        
     with tab33:
         st.title("📋 Data Presensi Saat Ini")
         
@@ -1996,7 +1995,7 @@ def halaman_Update_Presensi():
                     "Tanggal Awal",
                     value=None,
                     key="filter_tgl_awal_tab33",
-                    format="DD/MM/YYYY"
+                    format="DD/MM/YYYY"  # Tampilan DD/MM/YYYY
                 )
             
             with col_periode2:
@@ -2008,7 +2007,7 @@ def halaman_Update_Presensi():
                     "Tanggal Akhir",
                     value=None,
                     key="filter_tgl_akhir_tab33",
-                    format="DD/MM/YYYY"
+                    format="DD/MM/YYYY"  # Tampilan DD/MM/YYYY
                 )
             
             with col_periode3:
@@ -2024,12 +2023,20 @@ def halaman_Update_Presensi():
         # Copy data asli
         db_data_presensi_tampil = db_data_presensi.copy()
         
-        # Konversi kolom Tanggal ke datetime untuk filtering
+        # ============================================
+        # KONVERSI TANGGAL UNTUK FILTERING
+        # ============================================
+        # PENJELASAN: 
+        # - Data asli dari Google Sheets: "10/03/2026" (string DD/MM/YYYY)
+        # - Untuk keperluan filter, kita konversi ke datetime internal pandas: 2026-03-10
+        # - Kolom internal ini (Tanggal_dt) hanya untuk filtering, TIDAK DITAMPILKAN ke user
+        # - Setelah filtering, kolom ini akan dihapus sebelum ditampilkan
+        
         if not db_data_presensi_tampil.empty and 'Tanggal' in db_data_presensi_tampil.columns:
             db_data_presensi_tampil['Tanggal_dt'] = pd.to_datetime(
                 db_data_presensi_tampil['Tanggal'], 
-                format='%d/%m/%Y', 
-                errors='coerce'
+                format='%d/%m/%Y',  # Format sesuai data asli: DD/MM/YYYY
+                errors='coerce'      # Jika error, jadikan NaT (bukan error)
             )
         
         # ============================================
@@ -2042,13 +2049,14 @@ def halaman_Update_Presensi():
             if tgl_awal_filter > tgl_akhir_filter:
                 st.error("❌ Tanggal awal harus lebih kecil atau sama dengan tanggal akhir!")
             else:
+                # Filter menggunakan kolom Tanggal_dt (format internal)
                 mask = (
                     (df_filtered['Tanggal_dt'] >= pd.Timestamp(tgl_awal_filter)) &
                     (df_filtered['Tanggal_dt'] <= pd.Timestamp(tgl_akhir_filter))
                 )
                 df_filtered = df_filtered.loc[mask].copy()
                 
-                # Tampilkan info periode
+                # Tampilkan info periode dalam format DD/MM/YYYY (kembali ke format user)
                 tgl_awal_str = tgl_awal_filter.strftime('%d/%m/%Y')
                 tgl_akhir_str = tgl_akhir_filter.strftime('%d/%m/%Y')
                 st.info(f"📊 Menampilkan data periode **{tgl_awal_str} - {tgl_akhir_str}**")
@@ -2059,12 +2067,14 @@ def halaman_Update_Presensi():
         # ============================================
         # HAPUS KOLOM YANG TIDAK DITAMPILKAN
         # ============================================
+        # PENJELASAN: Kolom Tanggal_dt (format internal) dihapus karena tidak perlu ditampilkan
+        # User hanya perlu melihat kolom Tanggal asli dengan format DD/MM/YYYY
         hidden_cols = ["Status Terbayar", "Tanggal_dt"]
         for col in hidden_cols:
             if col in df_filtered.columns:
                 df_filtered = df_filtered.drop(columns=[col])
         
-        # Konversi ID_Magang ke string
+        # Konversi ID_Magang ke string untuk tampilan
         if 'ID_Magang' in df_filtered.columns:
             df_filtered["ID_Magang"] = df_filtered["ID_Magang"].astype(str)
         
@@ -2083,7 +2093,7 @@ def halaman_Update_Presensi():
         
         with col_info3:
             if not df_filtered.empty and 'Tanggal' in df_filtered.columns:
-                # Hitung rentang tanggal
+                # Hitung rentang tanggal (konversi ke datetime dulu, lalu format kembali)
                 try:
                     tanggal_dt = pd.to_datetime(df_filtered['Tanggal'], format='%d/%m/%Y', errors='coerce')
                     tgl_min = tanggal_dt.min().strftime('%d/%m/%Y') if pd.notna(tanggal_dt.min()) else '-'
@@ -2105,7 +2115,7 @@ def halaman_Update_Presensi():
                 use_container_width=True,
                 column_config={
                     "ID_Magang": "ID Magang",
-                    "Tanggal": "Tanggal",
+                    "Tanggal": "Tanggal",  # ← TETAP DD/MM/YYYY
                     "Jam Masuk": "Jam Masuk",
                     "Jam Pulang": "Jam Pulang",
                     "Scan Masuk": "Scan Masuk",
@@ -2135,7 +2145,7 @@ def halaman_Update_Presensi():
                 with col_stat2:
                     st.markdown("**Ringkasan per Bulan**")
                     if 'Tanggal' in df_filtered.columns:
-                        # Ekstrak bulan dari tanggal
+                        # Ekstrak bulan dari tanggal (konversi dulu ke datetime)
                         df_filtered['Bulan'] = pd.to_datetime(
                             df_filtered['Tanggal'], format='%d/%m/%Y', errors='coerce'
                         ).dt.month
