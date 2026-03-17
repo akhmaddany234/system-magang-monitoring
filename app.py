@@ -4,8 +4,8 @@ from datetime import datetime, time  # time adalah tipe datetime.time
 import time as mod_time  # alias untuk modul time
 from dateutil.relativedelta import relativedelta
 from utils import (
-    authenticate_user1, save_internship_data, create_excel_sheet, load_data_cached, load_data_for_login, update_data_duplikat, delete_internship_data, get_departemen_data, save_departemen_data, hapus_data_by_periode,
-    load_data, convert_tanggal, append_to_sheet, validasi_data, hitung_umut, update_internship_data, parse_tanggal_ke_string, refresh_data_in_session, parse_time, update_departemen_data, delete_departemen_data
+    authenticate_user1, save_internship_data, create_excel_sheet, load_data_cached, load_data_for_login, update_data_duplikat, delete_internship_data,
+    load_data, convert_tanggal, append_to_sheet, validasi_data, hitung_umut, update_internship_data, parse_tanggal_ke_string, refresh_data_in_session, parse_time, hapus_data_by_periode
 )
 from config import SPREADSHEET_ID, DEPARTEMEN, APP_CONFIG, MESSAGES, departemen_list, jenissekolah_list, periode_list, nama_kolom_data_absen
 import plotly.express as px
@@ -422,8 +422,7 @@ def show_sidebar():
                 "Entry Data",
                 "Magang Analytic",
                 "Update Presensi",
-                "Rekapitulasi Kehadiran",
-                "Monitoring Timebreak"
+                "Rekapitulasi Kehadiran"
             ]
         )
 
@@ -432,8 +431,7 @@ def show_sidebar():
             "Entry Data": "pendaftaran",
             "Magang Analytic": "Magang Analytic",
             "Update Presensi": "Update Presensi",
-            "Rekapitulasi Kehadiran": "Rekapitulasi Kehadiran",
-            "Monitoring Timebreak": "monitoring_timebreak"
+            "Rekapitulasi Kehadiran": "Rekapitulasi Kehadiran"
         }
 
         selected_page = menu_map[menu]
@@ -1634,6 +1632,8 @@ def halaman_Update_Presensi():
                 if extra_columns:
                     st.write("Kolom tambahan di file upload:")
                     st.write(extra_columns)
+
+                    
     with tab22:
         st.title("🗑️ Hapus Data Presensi")
         st.markdown("**Hapus data presensi berdasarkan periode tanggal**")
@@ -1658,8 +1658,15 @@ def halaman_Update_Presensi():
         
         # Tampilkan preview data yang ada
         with st.expander("📋 Preview Data Presensi Saat Ini", expanded=False):
-            st.dataframe(db_data_presensi, use_container_width=True, height=200)
-            st.caption(f"Total data: {len(db_data_presensi)} baris")
+            # Tampilkan sample data dengan format asli
+            if not db_data_presensi.empty:
+                sample_data = db_data_presensi.head(10).copy()
+                if 'ID_Magang' in sample_data.columns:
+                    sample_data['ID_Magang'] = sample_data['ID_Magang'].astype(str)
+                st.dataframe(sample_data, use_container_width=True)
+                st.caption(f"Total data: {len(db_data_presensi)} baris (menampilkan 10 sample)")
+            else:
+                st.info("Database presensi kosong")
         
         st.divider()
         
@@ -1672,14 +1679,16 @@ def halaman_Update_Presensi():
             tgl_awal_hapus = st.date_input(
                 "📅 Tanggal Awal Periode",
                 value=datetime.now().date(),
-                key="tgl_awal_hapus"
+                key="tgl_awal_hapus",
+                format="DD/MM/YYYY"  # Streamlit akan menampilkan format ini
             )
         
         with col2:
             tgl_akhir_hapus = st.date_input(
                 "📅 Tanggal Akhir Periode",
                 value=datetime.now().date(),
-                key="tgl_akhir_hapus"
+                key="tgl_akhir_hapus",
+                format="DD/MM/YYYY"
             )
         
         # Validasi tanggal
@@ -1691,9 +1700,11 @@ def halaman_Update_Presensi():
         # FILTER DATA UNTUK PREVIEW
         # ============================================
         if not db_data_presensi.empty:
-            # Konversi kolom Tanggal ke datetime
+            # Konversi kolom Tanggal dari format DD/MM/YYYY ke datetime
             db_data_presensi['Tanggal_dt'] = pd.to_datetime(
-                db_data_presensi['Tanggal'], format='%d/%m/%Y', errors='coerce'
+                db_data_presensi['Tanggal'], 
+                format='%d/%m/%Y',  # FORMAT SESUAI: DD/MM/YYYY
+                errors='coerce'
             )
             
             # Filter data berdasarkan periode
@@ -1705,19 +1716,33 @@ def halaman_Update_Presensi():
             data_terfilter = db_data_presensi.loc[mask].copy()
             jumlah_terfilter = len(data_terfilter)
             
-            # Tampilkan informasi
-            st.info(f"📊 Ditemukan **{jumlah_terfilter}** data presensi pada periode {tgl_awal_hapus.strftime('%d/%m/%Y')} - {tgl_akhir_hapus.strftime('%d/%m/%Y')}")
+            # Tampilkan informasi dengan format tanggal Indonesia
+            tgl_awal_str = tgl_awal_hapus.strftime('%d/%m/%Y')
+            tgl_akhir_str = tgl_akhir_hapus.strftime('%d/%m/%Y')
+            
+            st.info(f"📊 Ditemukan **{jumlah_terfilter}** data presensi pada periode **{tgl_awal_str} - {tgl_akhir_str}**")
             
             if jumlah_terfilter > 0:
                 with st.expander("👀 Preview Data yang Akan Dihapus", expanded=True):
+                    # Siapkan data untuk ditampilkan
+                    data_preview = data_terfilter.copy()
+                    
+                    # Konversi ID_Magang ke string untuk tampilan
+                    if 'ID_Magang' in data_preview.columns:
+                        data_preview['ID_Magang'] = data_preview['ID_Magang'].astype(str)
+                    
+                    # Hapus kolom Tanggal_dt jika ada
+                    if 'Tanggal_dt' in data_preview.columns:
+                        data_preview = data_preview.drop(columns=['Tanggal_dt'])
+                    
                     # Tampilkan sample (maks 50 baris)
                     if jumlah_terfilter > 50:
                         st.warning(f"Menampilkan 50 dari {jumlah_terfilter} data (terlalu banyak untuk ditampilkan)")
-                        st.dataframe(data_terfilter.head(50), use_container_width=True)
+                        st.dataframe(data_preview.head(50), use_container_width=True)
                     else:
-                        st.dataframe(data_terfilter, use_container_width=True)
+                        st.dataframe(data_preview, use_container_width=True)
                     
-                    # Ringkasan per departemen
+                    # Ringkasan per departemen (jika kolom tersedia)
                     if 'Bagian/Dept' in data_terfilter.columns:
                         dept_summary = data_terfilter['Bagian/Dept'].value_counts().reset_index()
                         dept_summary.columns = ['Departemen', 'Jumlah']
@@ -1731,6 +1756,7 @@ def halaman_Update_Presensi():
                             # Ringkasan per ID
                             id_summary = data_terfilter['ID_Magang'].value_counts().reset_index().head(10)
                             id_summary.columns = ['ID_Magang', 'Jumlah']
+                            id_summary['ID_Magang'] = id_summary['ID_Magang'].astype(str)
                             st.write("**Top 10 ID Magang:**")
                             st.dataframe(id_summary, use_container_width=True)
                 
@@ -1741,10 +1767,15 @@ def halaman_Update_Presensi():
                 # ============================================
                 st.error(f"⚠️ **KONFIRMASI PENGHAPUSAN**")
                 st.write(f"Anda akan menghapus **{jumlah_terfilter}** data presensi secara permanen!")
+                st.write(f"Periode: **{tgl_awal_str} - {tgl_akhir_str}**")
                 
                 # Checkbox konfirmasi
                 confirm1 = st.checkbox("Saya memahami bahwa data yang dihapus tidak dapat dikembalikan")
                 confirm2 = st.checkbox(f"Saya yakin akan menghapus {jumlah_terfilter} data pada periode tersebut")
+                
+                # Input password untuk keamanan ekstra (opsional)
+                st.caption("🔒 Untuk keamanan, masukkan password admin")
+                password_confirm = st.text_input("Password:", type="password", key="password_hapus")
                 
                 col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
                 
@@ -1753,13 +1784,13 @@ def halaman_Update_Presensi():
                         "🗑️ HAPUS DATA PERMANEN", 
                         use_container_width=True, 
                         type="primary",
-                        disabled=not (confirm1 and confirm2)
+                        disabled=not (confirm1 and confirm2 and password_confirm == "admin123")  # Ganti dengan password Anda
                     ):
                         
                         with st.spinner(f"Menghapus {jumlah_terfilter} data..."):
                             try:
                                 # Panggil fungsi hapus berdasarkan periode
-                                success, message = hapus_data_by_periode(
+                                success, message, jumlah_hapus = hapus_data_by_periode(
                                     "data_presensi",
                                     tgl_awal_hapus,
                                     tgl_akhir_hapus
@@ -1781,17 +1812,18 @@ def halaman_Update_Presensi():
                             except Exception as e:
                                 st.error(f"❌ Error: {str(e)}")
             else:
-                st.success("✅ Tidak ada data pada periode tersebut")
+                st.success(f"✅ Tidak ada data pada periode {tgl_awal_str} - {tgl_akhir_str}")
         else:
-            st.info("📭 Database presensi kosong")    
-    with tab33:
-        st.title("Data Presensi Saat Ini")
-        hidden_cols = ["Status Terbayar"]
-        db_data_presensi_tampil = db_data_presensi.copy()
-        db_data_presensi_tampil = db_data_presensi_tampil.drop(columns=hidden_cols, errors="ignore")
-        if 'ID_Magang' in db_data_presensi_tampil.columns:
-            db_data_presensi_tampil["ID_Magang"] = db_data_presensi_tampil["ID_Magang"].astype(str)
-        st.dataframe(db_data_presensi_tampil, use_container_width=True, height=600)
+            st.info("📭 Database presensi kosong")
+        
+        with tab33:
+            st.title("Data Presensi Saat Ini")
+            hidden_cols = ["Status Terbayar"]
+            db_data_presensi_tampil = db_data_presensi.copy()
+            db_data_presensi_tampil = db_data_presensi_tampil.drop(columns=hidden_cols, errors="ignore")
+            if 'ID_Magang' in db_data_presensi_tampil.columns:
+                db_data_presensi_tampil["ID_Magang"] = db_data_presensi_tampil["ID_Magang"].astype(str)
+            st.dataframe(db_data_presensi_tampil, use_container_width=True, height=600)
 
 
 # =========================
@@ -2601,294 +2633,6 @@ def halaman_Rekapitulasi_Presensi():
         
         else:
             st.info("📭 Belum ada data presensi")
-
-def halaman_monitoring_timebreak():
-    st.title("⏰ Monitoring Timebreak Departemen")
-    st.markdown("Kelola jam istirahat setiap departemen")
-    
-    # Inisialisasi session state
-    if 'edit_mode_timebreak' not in st.session_state:
-        st.session_state.edit_mode_timebreak = False
-    if 'selected_dept_timebreak' not in st.session_state:
-        st.session_state.selected_dept_timebreak = None
-    
-    # Load data departemen
-    df_dept = get_departemen_data()
-    
-    # Tabs
-    tab1, tab2, tab3 = st.tabs(["📋 Data Timebreak", "➕ Tambah Data", "✏️ Edit/Hapus"])
-    
-    # =========================
-    # TAB 1: LIHAT DATA
-    # =========================
-    with tab1:
-        if not df_dept.empty:
-            # Tampilkan data dengan format yang rapi
-            df_display = df_dept.copy()
-            df_display.columns = ['ID', 'Departemen', 'Mulai', 'Akhir']
-            
-            st.dataframe(
-                df_display,
-                use_container_width=True,
-                height=400,
-                column_config={
-                    "ID": "ID Departemen",
-                    "Departemen": "Nama Departemen",
-                    "Mulai": "Mulai Istirahat",
-                    "Akhir": "Akhir Istirahat"
-                }
-            )
-            
-            # Statistik
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Departemen", len(df_dept))
-            with col2:
-                # Hitung durasi istirahat
-                durasi_list = []
-                for _, row in df_dept.iterrows():
-                    try:
-                        mulai = pd.to_datetime(row['Mulai Istirahat'], format='%H:%M')
-                        akhir = pd.to_datetime(row['Akhir Istirahat'], format='%H:%M')
-                        durasi = (akhir - mulai).seconds / 3600
-                        durasi_list.append(durasi)
-                    except:
-                        pass
-                if durasi_list:
-                    avg_durasi = sum(durasi_list) / len(durasi_list)
-                    st.metric("Rata-rata Durasi", f"{avg_durasi:.1f} jam")
-            with col3:
-                st.metric("Total Data", len(df_dept))
-        else:
-            st.info("📭 Belum ada data departemen")
-    
-    # =========================
-    # TAB 2: TAMBAH DATA
-    # =========================
-    with tab2:
-        st.subheader("➕ Tambah Data Timebreak Baru")
-        
-        with st.form("form_tambah_timebreak"):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                id_dept = st.number_input(
-                    "ID Departemen *",
-                    min_value=1,
-                    max_value=999,
-                    step=1,
-                    help="Contoh: 101, 102, 103"
-                )
-                nama_dept = st.text_input(
-                    "Nama Departemen *",
-                    placeholder="Contoh: HR&GA, IT, Finance"
-                )
-            
-            with col2:
-                mulai = st.time_input(
-                    "Mulai Istirahat *",
-                    value=time(12, 0),  # default 12:00
-                    step=60  # step 1 menit
-                )
-                akhir = st.time_input(
-                    "Akhir Istirahat *",
-                    value=time(13, 0),  # default 13:00
-                    step=60
-                )
-            
-            # Validasi durasi
-            if mulai and akhir:
-                durasi = (pd.to_datetime(str(akhir)) - pd.to_datetime(str(mulai))).seconds / 3600
-                if durasi <= 0:
-                    st.error("❌ Akhir istirahat harus lebih besar dari mulai istirahat!")
-                elif durasi > 4:
-                    st.warning(f"⚠️ Durasi istirahat {durasi:.1f} jam (cukup lama)")
-                else:
-                    st.info(f"⏱️ Durasi istirahat: {durasi:.1f} jam")
-            
-            st.markdown("---")
-            
-            # Tombol submit
-            col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
-            with col_btn2:
-                submitted = st.form_submit_button(
-                    "💾 SIMPAN DATA",
-                    use_container_width=True,
-                    type="primary"
-                )
-            
-            if submitted:
-                if not nama_dept:
-                    st.error("❌ Nama departemen harus diisi!")
-                elif mulai >= akhir:
-                    st.error("❌ Akhir istirahat harus lebih besar dari mulai istirahat!")
-                else:
-                    # Siapkan data
-                    form_data = {
-                        "id_departemen": id_dept,
-                        "nama_departemen": nama_dept,
-                        "mulai_istirahat": mulai.strftime("%H:%M"),
-                        "akhir_istirahat": akhir.strftime("%H:%M")
-                    }
-                    
-                    # Simpan
-                    with st.spinner("Menyimpan data..."):
-                        success, message = save_departemen_data(form_data)
-                        
-                        if success:
-                            st.success(f"✅ {message}")
-                            st.balloons()
-                            # Reset form dengan rerun
-                            st.rerun()
-                        else:
-                            st.error(f"❌ {message}")
-    
-    # =========================
-    # TAB 3: EDIT & HAPUS
-    # =========================
-    with tab3:
-        if not df_dept.empty:
-            st.subheader("✏️ Edit / Hapus Data Timebreak")
-            
-            # Pilih departemen
-            dept_options = df_dept.apply(
-                lambda row: f"{row['id_departemen']} - {row['nama_departemen']}", 
-                axis=1
-            ).tolist()
-            
-            selected = st.selectbox(
-                "Pilih Departemen:",
-                options=dept_options,
-                key="select_dept_timebreak"
-            )
-            
-            if selected:
-                # Parse ID dari string
-                selected_id = int(selected.split(" - ")[0])
-                selected_data = df_dept[df_dept['id_departemen'] == selected_id].iloc[0]
-                
-                # Tombol aksi
-                col1, col2, col3 = st.columns([1, 1, 2])
-                
-                with col1:
-                    if st.button("✏️ Edit", use_container_width=True, type="primary"):
-                        st.session_state.edit_mode_timebreak = True
-                        st.session_state.selected_dept_timebreak = selected_data.to_dict()
-                        st.rerun()
-                
-                with col2:
-                    if st.button("🗑️ Hapus", use_container_width=True):
-                        # Konfirmasi hapus
-                        st.warning(f"Anda akan menghapus: {selected_data['nama_departemen']}")
-                        
-                        col_confirm1, col_confirm2 = st.columns(2)
-                        with col_confirm1:
-                            if st.button("✅ Ya, Hapus", key="confirm_delete_timebreak"):
-                                with st.spinner("Menghapus data..."):
-                                    success, message = delete_departemen_data(selected_id)
-                                    if success:
-                                        st.success(f"✅ {message}")
-                                        refresh_data_in_session()
-                                        st.rerun()
-                                    else:
-                                        st.error(f"❌ {message}")
-                        with col_confirm2:
-                            if st.button("❌ Batal", key="cancel_delete_timebreak"):
-                                st.rerun()
-            
-            # =========================
-            # FORM EDIT (ditampilkan jika edit mode aktif)
-            # =========================
-            if st.session_state.edit_mode_timebreak and st.session_state.selected_dept_timebreak:
-                st.divider()
-                st.subheader("✏️ Form Edit Data Timebreak")
-                
-                data = st.session_state.selected_dept_timebreak
-                
-                # Parse time dari string
-                try:
-                    mulai_default = pd.to_datetime(data['Mulai Istirahat'], format='%H:%M').time()
-                except:
-                    mulai_default = time(12, 0)
-                
-                try:
-                    akhir_default = pd.to_datetime(data['Akhir Istirahat'], format='%H:%M').time()
-                except:
-                    akhir_default = time(13, 0)
-                
-                with st.form("form_edit_timebreak"):
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        edit_id = st.number_input(
-                            "ID Departemen *",
-                            value=int(data['id_departemen']),
-                            disabled=True,  # ID tidak bisa diubah
-                            key="edit_id_timebreak"
-                        )
-                        edit_nama = st.text_input(
-                            "Nama Departemen *",
-                            value=data['nama_departemen'],
-                            key="edit_nama_timebreak"
-                        )
-                    
-                    with col2:
-                        edit_mulai = st.time_input(
-                            "Mulai Istirahat *",
-                            value=mulai_default,
-                            key="edit_mulai_timebreak"
-                        )
-                        edit_akhir = st.time_input(
-                            "Akhir Istirahat *",
-                            value=akhir_default,
-                            key="edit_akhir_timebreak"
-                        )
-                    
-                    # Validasi
-                    if edit_mulai and edit_akhir:
-                        durasi = (pd.to_datetime(str(edit_akhir)) - pd.to_datetime(str(edit_mulai))).seconds / 3600
-                        if durasi <= 0:
-                            st.error("❌ Akhir istirahat harus lebih besar dari mulai istirahat!")
-                        else:
-                            st.info(f"⏱️ Durasi istirahat: {durasi:.1f} jam")
-                    
-                    st.markdown("---")
-                    
-                    col_btn1, col_btn2, col_btn3, col_btn4 = st.columns([1, 1, 1, 2])
-                    
-                    with col_btn1:
-                        if st.form_submit_button("💾 Update", use_container_width=True, type="primary"):
-                            if not edit_nama:
-                                st.error("❌ Nama departemen harus diisi!")
-                            elif edit_mulai >= edit_akhir:
-                                st.error("❌ Akhir istirahat harus lebih besar dari mulai istirahat!")
-                            else:
-                                updated_data = {
-                                    "id_departemen": edit_id,
-                                    "nama_departemen": edit_nama,
-                                    "mulai_istirahat": edit_mulai.strftime("%H:%M"),
-                                    "akhir_istirahat": edit_akhir.strftime("%H:%M")
-                                }
-                                
-                                with st.spinner("Mengupdate data..."):
-                                    success, message = update_departemen_data(edit_id, updated_data)
-                                    
-                                    if success:
-                                        st.success(f"✅ {message}")
-                                        st.session_state.edit_mode_timebreak = False
-                                        st.session_state.selected_dept_timebreak = None
-                                        refresh_data_in_session()
-                                        st.rerun()
-                                    else:
-                                        st.error(f"❌ {message}")
-                    
-                    with col_btn2:
-                        if st.form_submit_button("❌ Batal", use_container_width=True):
-                            st.session_state.edit_mode_timebreak = False
-                            st.session_state.selected_dept_timebreak = None
-                            st.rerun()
-        else:
-            st.info("📭 Belum ada data departemen untuk diedit")
     
 
 # =========================
@@ -2917,8 +2661,6 @@ def main():
         halaman_Update_Presensi()
     elif st.session_state.current_page == 'Rekapitulasi Kehadiran':
         halaman_Rekapitulasi_Presensi()
-    elif st.session_state.current_page == 'monitoring_timebreak':  # <-- TAMBAHKAN INI
-        halaman_monitoring_timebreak()
     else:
         halaman_entry_data()
 
