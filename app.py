@@ -4,7 +4,7 @@ from datetime import datetime, time  # time adalah tipe datetime.time
 import time as mod_time  # alias untuk modul time
 from dateutil.relativedelta import relativedelta
 from utils import (
-    authenticate_user1, save_internship_data, create_excel_sheet, load_data_cached, load_data_for_login, update_data_duplikat, delete_internship_data, get_departemen_data, save_departemen_data,
+    authenticate_user1, save_internship_data, create_excel_sheet, load_data_cached, load_data_for_login, update_data_duplikat, delete_internship_data, get_departemen_data, save_departemen_data, hapus_data_by_periode,
     load_data, convert_tanggal, append_to_sheet, validasi_data, hitung_umut, update_internship_data, parse_tanggal_ke_string, refresh_data_in_session, parse_time, update_departemen_data, delete_departemen_data
 )
 from config import SPREADSHEET_ID, DEPARTEMEN, APP_CONFIG, MESSAGES, departemen_list, jenissekolah_list, periode_list, nama_kolom_data_absen
@@ -1635,45 +1635,17 @@ def halaman_Update_Presensi():
                     st.write("Kolom tambahan di file upload:")
                     st.write(extra_columns)
     with tab22:
-        st.title("🔁Perbarui Data Presensi")
-        st.markdown("**Ketentuan Upload File**")
-
-        st.markdown("""
-        1. File harus berformat **.xlsx** atau **.xls**  
-        2. Kolom harus sesuai dengan format berikut
+        st.title("🗑️ Hapus Data Presensi")
+        st.markdown("**Hapus data presensi berdasarkan periode tanggal**")
+        
+        st.warning("""
+        ⚠️ **PERHATIAN:**
+        - Fitur ini akan **MENGHAPUS PERMANEN** data presensi
+        - Data yang dihapus **TIDAK DAPAT DIKEMBALIKAN**
+        - Harap periksa periode dengan teliti sebelum menghapus
         """)
-
-        st.markdown("**Kolom yang diperlukan:**")
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.markdown("""
-            - ID_Magang
-            - Nama
-            - Tanggal
-            - Jam Masuk
-            """)
-
-        with col2:
-            st.markdown("""
-            - Jam Pulang
-            - Scan Masuk
-            - Scan Keluar
-            - Terlambat
-            """)
-
-        with col3:
-            st.markdown("""
-            - Plg Cpt
-            - Lembur
-            - Jam Kerja
-            - Jml Hadir
-            """)
         
-        st.markdown("---")
-        
-        # Load data dari Google Sheets (gunakan dari session state jika sudah ada)
+        # Load data dari session state
         if 'data_presensi' in st.session_state:
             db_data_presensi = st.session_state.data_presensi
         else:
@@ -1683,226 +1655,135 @@ def halaman_Update_Presensi():
             db_magang = st.session_state.data_magang
         else:
             db_magang = load_data_cached("database_magang")
-    
         
-        # Upload file untuk update
-        upload_data_update_absen = st.file_uploader(
-            "Pilih file Excel untuk UPDATE data", 
-            type=["xlsx", "xls"],
-            key="upload_update"
-        )
+        # Tampilkan preview data yang ada
+        with st.expander("📋 Preview Data Presensi Saat Ini", expanded=False):
+            st.dataframe(db_data_presensi, use_container_width=True, height=200)
+            st.caption(f"Total data: {len(db_data_presensi)} baris")
         
-        # Inisialisasi session state untuk tab update
-        if 'df_update_absen' not in st.session_state:
-            st.session_state.df_update_absen = None
-        if 'hasil_validasi_update' not in st.session_state:
-            st.session_state.hasil_validasi_update = None
-        if 'data_duplikat' not in st.session_state:
-            st.session_state.data_duplikat = None
-        if 'data_tidak_ditemukan' not in st.session_state:
-            st.session_state.data_tidak_ditemukan = None
+        st.divider()
         
-        # Jika ada file baru diupload
-        if upload_data_update_absen is not None:
-            df_update = pd.read_excel(upload_data_update_absen)
-            # Bersihkan nama kolom
-            df_update.columns = [str(col).strip() for col in df_update.columns]
-            
-            # KONVERSI ID_Magang KE INTEGER
-            if 'ID_Magang' in df_update.columns:
-                df_update['ID_Magang'] = pd.to_numeric(df_update['ID_Magang'], errors='coerce').fillna(0).astype(int)
-                if (df_update['ID_Magang'] == 0).any():
-                    st.warning("⚠️ Beberapa ID_Magang tidak valid dan diganti 0. Harap periksa kembali data Anda.")
-            
-            st.session_state.df_update_absen = df_update
-            st.session_state.hasil_validasi_update = None
-            st.session_state.data_duplikat = None
-            st.session_state.data_tidak_ditemukan = None
+        # ============================================
+        # INPUT PERIODE HAPUS
+        # ============================================
+        col1, col2 = st.columns(2)
         
-        # Jika ada data di session state
-        if st.session_state.df_update_absen is not None:
-            df_update = st.session_state.df_update_absen
+        with col1:
+            tgl_awal_hapus = st.date_input(
+                "📅 Tanggal Awal Periode",
+                value=datetime.now().date(),
+                key="tgl_awal_hapus"
+            )
+        
+        with col2:
+            tgl_akhir_hapus = st.date_input(
+                "📅 Tanggal Akhir Periode",
+                value=datetime.now().date(),
+                key="tgl_akhir_hapus"
+            )
+        
+        # Validasi tanggal
+        if tgl_awal_hapus > tgl_akhir_hapus:
+            st.error("❌ Tanggal awal harus lebih kecil atau sama dengan tanggal akhir!")
+            st.stop()
+        
+        # ============================================
+        # FILTER DATA UNTUK PREVIEW
+        # ============================================
+        if not db_data_presensi.empty:
+            # Konversi kolom Tanggal ke datetime
+            db_data_presensi['Tanggal_dt'] = pd.to_datetime(
+                db_data_presensi['Tanggal'], format='%d/%m/%Y', errors='coerce'
+            )
             
-            # Bersihkan nama kolom database
-            db_data_presensi.columns = [str(col).strip() for col in db_data_presensi.columns]
+            # Filter data berdasarkan periode
+            mask = (
+                (db_data_presensi['Tanggal_dt'] >= pd.Timestamp(tgl_awal_hapus)) &
+                (db_data_presensi['Tanggal_dt'] <= pd.Timestamp(tgl_akhir_hapus))
+            )
             
-            kolom_excel = list(df_update.columns)
-            kolom_database = list(db_data_presensi.columns)
+            data_terfilter = db_data_presensi.loc[mask].copy()
+            jumlah_terfilter = len(data_terfilter)
             
-            # Kolom yang dikecualikan dari pengecekan
-            exclude_col = "Status Terbayar"
-            kolom_database_tanpa_exclude = [col for col in kolom_database if col != exclude_col]
+            # Tampilkan informasi
+            st.info(f"📊 Ditemukan **{jumlah_terfilter}** data presensi pada periode {tgl_awal_hapus.strftime('%d/%m/%Y')} - {tgl_akhir_hapus.strftime('%d/%m/%Y')}")
             
-            # Cek kesesuaian kolom
-            if kolom_excel == kolom_database_tanpa_exclude:
-                st.success("✅ Struktur kolom sesuai dengan database (tanpa kolom Status Terbayar)")
-                
-                st.write("Data yang diupload:")
-                df_update_tampil = df_update.copy()
-                df_update_tampil["ID_Magang"] = df_update_tampil["ID_Magang"].astype(str)
-                st.dataframe(df_update_tampil, use_container_width=True, height=200)
-                
-                # ============================================
-                # VALIDASI UNTUK UPDATE DATA
-                # ============================================
-                if st.session_state.hasil_validasi_update is None:
-                    with st.spinner("🔍 Memeriksa data yang akan diupdate..."):
+            if jumlah_terfilter > 0:
+                with st.expander("👀 Preview Data yang Akan Dihapus", expanded=True):
+                    # Tampilkan sample (maks 50 baris)
+                    if jumlah_terfilter > 50:
+                        st.warning(f"Menampilkan 50 dari {jumlah_terfilter} data (terlalu banyak untuk ditampilkan)")
+                        st.dataframe(data_terfilter.head(50), use_container_width=True)
+                    else:
+                        st.dataframe(data_terfilter, use_container_width=True)
+                    
+                    # Ringkasan per departemen
+                    if 'Bagian/Dept' in data_terfilter.columns:
+                        dept_summary = data_terfilter['Bagian/Dept'].value_counts().reset_index()
+                        dept_summary.columns = ['Departemen', 'Jumlah']
                         
-                        # Buat dictionary untuk lookup cepat dari database
-                        db_dict = {}
-                        for _, row in db_data_presensi.iterrows():
-                            id_val = row['ID_Magang']
-                            tgl_val = row['Tanggal']
-                            
-                            # Konversi ID ke integer
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            st.write("**Ringkasan per Departemen:**")
+                            st.dataframe(dept_summary, use_container_width=True)
+                        
+                        with col_b:
+                            # Ringkasan per ID
+                            id_summary = data_terfilter['ID_Magang'].value_counts().reset_index().head(10)
+                            id_summary.columns = ['ID_Magang', 'Jumlah']
+                            st.write("**Top 10 ID Magang:**")
+                            st.dataframe(id_summary, use_container_width=True)
+                
+                st.divider()
+                
+                # ============================================
+                # KONFIRMASI DAN HAPUS
+                # ============================================
+                st.error(f"⚠️ **KONFIRMASI PENGHAPUSAN**")
+                st.write(f"Anda akan menghapus **{jumlah_terfilter}** data presensi secara permanen!")
+                
+                # Checkbox konfirmasi
+                confirm1 = st.checkbox("Saya memahami bahwa data yang dihapus tidak dapat dikembalikan")
+                confirm2 = st.checkbox(f"Saya yakin akan menghapus {jumlah_terfilter} data pada periode tersebut")
+                
+                col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+                
+                with col_btn2:
+                    if st.button(
+                        "🗑️ HAPUS DATA PERMANEN", 
+                        use_container_width=True, 
+                        type="primary",
+                        disabled=not (confirm1 and confirm2)
+                    ):
+                        
+                        with st.spinner(f"Menghapus {jumlah_terfilter} data..."):
                             try:
-                                id_int = int(float(id_val)) if pd.notna(id_val) else None
-                            except:
-                                id_int = None
-                            
-                            # Konversi tanggal ke string untuk perbandingan
-                            tgl_str = parse_tanggal_ke_string(tgl_val)
-                            
-                            if id_int is not None and tgl_str is not None:
-                                key = (id_int, tgl_str)
-                                db_dict[key] = row.to_dict()  # Simpan seluruh baris data lama
-                        
-                        # Kategorikan data upload
-                        data_duplikat = []      # Data yang cocok (bisa diupdate)
-                        data_tidak_ditemukan = []  # Data yang tidak cocok
-                        
-                        for idx, row in df_update.iterrows():
-                            id_magang = row['ID_Magang']
-                            tgl = row['Tanggal']
-                            
-                            # Konversi tanggal ke string
-                            tgl_str = parse_tanggal_ke_string(tgl)
-                            
-                            if tgl_str is None:
-                                row_dict = row.to_dict()
-                                row_dict['index'] = idx
-                                row_dict['alasan'] = 'Tanggal tidak valid'
-                                data_tidak_ditemukan.append(row_dict)
-                                continue
-                            
-                            key = (id_magang, tgl_str)
-                            
-                            if key in db_dict:
-                                # Data ditemukan di database - bisa diupdate
-                                row_dict = row.to_dict()
-                                row_dict['index'] = idx
-                                row_dict['data_lama'] = db_dict[key]  # Simpan data lama untuk referensi
-                                data_duplikat.append(row_dict)
-                            else:
-                                # Data tidak ditemukan
-                                row_dict = row.to_dict()
-                                row_dict['index'] = idx
-                                row_dict['alasan'] = 'ID Magang dan Tanggal tidak ditemukan di database'
-                                data_tidak_ditemukan.append(row_dict)
-                        
-                        # Simpan hasil ke session state
-                        st.session_state.data_duplikat = data_duplikat
-                        st.session_state.data_tidak_ditemukan = data_tidak_ditemukan
-                        st.session_state.hasil_validasi_update = True
-                
-                # ============================================
-                # TAMPILKAN HASIL VALIDASI
-                # ============================================
-                if st.session_state.hasil_validasi_update:
-                    data_duplikat = st.session_state.data_duplikat
-                    data_tidak_ditemukan = st.session_state.data_tidak_ditemukan
-                    
-                    # Metrics
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Total Data Upload", len(df_update))
-                    with col2:
-                        st.metric("Data Bisa Diupdate", len(data_duplikat))
-                    with col3:
-                        st.metric("❌ Data Tidak Ditemukan", len(data_tidak_ditemukan))
-                    
-                    st.divider()
-                    
-                    # ========================================
-                    # TAMPILKAN DATA YANG BISA DIUPDATE
-                    # ========================================
-                    if data_duplikat:
-                        col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
-                        with col_btn2:
-                            if st.button("UPDATE DATA LAMA DENGAN DATA BARU", use_container_width=True, type="primary"):
+                                # Panggil fungsi hapus berdasarkan periode
+                                success, message = hapus_data_by_periode(
+                                    "data_presensi",
+                                    tgl_awal_hapus,
+                                    tgl_akhir_hapus
+                                )
                                 
-                                with st.spinner(f"Memproses update {len(data_duplikat)} data..."):
-                                    try:
-                                        # ========================================
-                                        # GUNAKAN FUNGSI update_data_duplikat dari utils
-                                        # ========================================
-                                        success = update_data_duplikat(
-                                            data_duplikat,      
-                                            df_update,          
-                                            db_data_presensi
-                                        )
-                                        
-                                        if success:
-                                            st.success(f"✅ **BERHASIL!** {len(data_duplikat)} data telah diupdate (data lama dihapus, data baru disimpan).")
-                                            
-                                            # Refresh cache dan session state
-                                            refresh_data_in_session()
-                                            
-                                            # Reset session state
-                                            st.session_state.df_update_absen = None
-                                            st.session_state.hasil_validasi_update = None
-                                            st.session_state.data_duplikat = None
-                                            st.session_state.data_tidak_ditemukan = None
-                                            
-                                            st.balloons()
-                                            tm.sleep(2)
-                                            st.rerun()
-                                            
-                                    except Exception as e:
-                                        st.error(f"❌ Error saat mengupdate data: {str(e)}")
-                                        with st.expander("Detail Error"):
-                                            st.write(e)
-                    
-                    # ========================================
-                    # TAMPILKAN DATA YANG TIDAK DITEMUKAN
-                    # ========================================
-                    if data_tidak_ditemukan:
-                        st.error(f"❌ **{len(data_tidak_ditemukan)} data tidak ditemukan di database**")
-                        
-                        with st.expander("📋 Detail Data Tidak Ditemukan", expanded=True):
-                            df_tidak_ditemukan = pd.DataFrame(data_tidak_ditemukan)
-                            # Tampilkan kolom yang relevan
-                            display_cols = ['ID_Magang', 'Tanggal', 'alasan']
-                            existing_cols = [col for col in display_cols if col in df_tidak_ditemukan.columns]
-                            if existing_cols:
-                                df_display = df_tidak_ditemukan[existing_cols].copy()
-                                if 'ID_Magang' in df_display.columns:
-                                    df_display["ID_Magang"] = df_display["ID_Magang"].astype(str)
-                                st.dataframe(df_display, use_container_width=True)
-                    
-                    st.divider()
-            
+                                if success:
+                                    st.success(f"✅ **BERHASIL!** {message}")
+                                    
+                                    # Refresh data
+                                    refresh_data_in_session()
+                                    
+                                    # Reset state
+                                    st.balloons()
+                                    tm.sleep(2)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Gagal menghapus data: {message}")
+                                    
+                            except Exception as e:
+                                st.error(f"❌ Error: {str(e)}")
             else:
-                st.error("❌ Struktur kolom tidak sama dengan database (Status Terbayar dikecualikan)")
-                
-                # Hitung kolom yang hilang dan tambahan
-                missing_columns = [col for col in kolom_database_tanpa_exclude if col not in kolom_excel]
-                extra_columns = [col for col in kolom_excel if col not in kolom_database_tanpa_exclude]
-                
-                st.write("📋 Kolom yang seharusnya ada di database (tanpa Status Terbayar):")
-                st.write(kolom_database_tanpa_exclude)
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    if missing_columns:
-                        st.error("❌ Kolom yang tidak ditemukan di file upload:")
-                        st.write(missing_columns)
-                
-                with col2:
-                    if extra_columns:
-                        st.warning("⚠️ Kolom tambahan di file upload (akan diabaikan):")
-                        st.write(extra_columns)
-    
+                st.success("✅ Tidak ada data pada periode tersebut")
+        else:
+            st.info("📭 Database presensi kosong")    
     with tab33:
         st.title("Data Presensi Saat Ini")
         hidden_cols = ["Status Terbayar"]
