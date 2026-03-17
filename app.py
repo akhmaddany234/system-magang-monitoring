@@ -1464,7 +1464,165 @@ def halaman_Magang_Analytic():
 
     with tab2:
         st.title("Data Magang")
-        st.dataframe(df, height=600)
+        
+        # ============================================
+        # FILTER SECTION
+        # ============================================
+        with st.container(border=True):
+            st.markdown("##### 🔍 Filter Data")
+            
+            col_filter1, col_filter2, col_filter3 = st.columns(3)
+            
+            with col_filter1:
+                # Filter Nama (search)
+                search_nama = st.text_input(
+                    "Cari Nama",
+                    placeholder="Masukkan nama...",
+                    key="filter_nama_tab2"
+                )
+            
+            with col_filter2:
+                # Filter Bagian/Dept (multiselect)
+                dept_options = ['Semua'] + sorted(df['Bagian/Dept'].unique().tolist())
+                filter_dept = st.selectbox(
+                    "Bagian/Dept",
+                    options=dept_options,
+                    key="filter_dept_tab2"
+                )
+            
+            with col_filter3:
+                # Filter Jenis Univ/Sekolah
+                jenis_options = ['Semua', 'Universitas', 'Sekolah']
+                filter_jenis = st.selectbox(
+                    "Jenis Institusi",
+                    options=jenis_options,
+                    key="filter_jenis_tab2"
+                )
+        
+        # ============================================
+        # APPLY FILTERS
+        # ============================================
+        df_filtered = df.copy()
+        
+        # Filter berdasarkan Nama
+        if search_nama:
+            df_filtered = df_filtered[
+                df_filtered['Nama'].astype(str).str.contains(search_nama, case=False, na=False)
+            ]
+        
+        # Filter berdasarkan Departemen
+        if filter_dept and filter_dept != 'Semua':
+            df_filtered = df_filtered[df_filtered['Bagian/Dept'] == filter_dept]
+        
+        # Filter berdasarkan Jenis Institusi
+        if filter_jenis and filter_jenis != 'Semua':
+            df_filtered = df_filtered[df_filtered['Jenis Univ/Sekolah'] == filter_jenis]
+        
+        # ============================================
+        # TAMPILKAN INFORMASI FILTER
+        # ============================================
+        st.markdown("---")
+        
+        # Info filter aktif
+        filter_active = []
+        if search_nama:
+            filter_active.append(f"Nama mengandung '{search_nama}'")
+        if filter_dept and filter_dept != 'Semua':
+            filter_active.append(f"Dept: {filter_dept}")
+        if filter_jenis and filter_jenis != 'Semua':
+            filter_active.append(f"Jenis: {filter_jenis}")
+        
+        if filter_active:
+            st.info(f"📊 Filter aktif: {', '.join(filter_active)} | Menampilkan {len(df_filtered)} dari {len(df)} data")
+        else:
+            st.info(f"📊 Total data: {len(df_filtered)}")
+        
+        # ============================================
+        # TAMPILKAN DATAFRAME
+        # ============================================
+        if not df_filtered.empty:
+            # Siapkan data untuk ditampilkan
+            df_display = df_filtered.copy()
+            
+            # Konversi ID_Magang ke string jika ada
+            if 'ID_Magang' in df_display.columns:
+                df_display['ID_Magang'] = df_display['ID_Magang'].astype(str)
+            
+            # Tampilkan dataframe dengan styling
+            st.dataframe(
+                df_display,
+                height=600,
+                use_container_width=True,
+                column_config={
+                    "ID_Magang": "ID Magang",
+                    "Nama": "Nama Lengkap",
+                    "Jenis Kelamin": "JK",
+                    "Jurusan/Fakultas": "Jurusan",
+                    "Jenjang": "Jenjang",
+                    "Sekolah/Universitas": "Institusi",
+                    "Jenis Univ/Sekolah": "Jenis",
+                    "Bagian/Dept": "Departemen",
+                    "Sub Dept": "Sub Dept",
+                    "Bulan": "Durasi",
+                    "Mulai": "Tgl Mulai",
+                    "Akhir": "Tgl Akhir",
+                    "Periode": "Periode",
+                    "Tahun": "Tahun",
+                    "Keterangan": "Ket",
+                    "Catatan": "Catatan",
+                    "S/A/SB/OP/DT": "Status"
+                }
+            )
+            
+            # ============================================
+            # STATISTIK CEPAT
+            # ============================================
+            st.divider()
+            st.markdown("##### Statistik Data Terfilter")
+            
+            col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+            
+            with col_stat1:
+                st.metric("Total Data", len(df_filtered))
+            
+            with col_stat2:
+                if 'Jenis Kelamin' in df_filtered.columns:
+                    laki = (df_filtered['Jenis Kelamin'] == 'Laki-laki').sum()
+                    st.metric("Laki-laki", laki)
+            
+            with col_stat3:
+                if 'Jenis Kelamin' in df_filtered.columns:
+                    perempuan = (df_filtered['Jenis Kelamin'] == 'Perempuan').sum()
+                    st.metric("Perempuan", perempuan)
+            
+            with col_stat4:
+                if 'S/A/SB/OP/DT' in df_filtered.columns:
+                    aktif = (df_filtered['S/A/SB/OP/DT'] == 'On Going').sum()
+                    st.metric("Aktif", aktif)
+            
+            # ============================================
+            # TOMBOL DOWNLOAD
+            # ============================================
+            col_dl1, col_dl2, col_dl3 = st.columns([1, 2, 1])
+            with col_dl2:
+                # Konversi ke CSV untuk download
+                csv = df_display.to_csv(index=False).encode('utf-8')
+                
+                st.download_button(
+                    label="📥 Download Data (CSV)",
+                    data=csv,
+                    file_name=f"data_magang_filtered_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+        else:
+            st.warning("⚠️ Tidak ada data yang sesuai dengan filter")
+            
+            # Tampilkan data kosong dengan struktur kolom
+            if df.empty:
+                st.info("📭 Database magang kosong")
+            else:
+                st.info("📭 Coba atur ulang filter untuk melihat data")
 
 # =========================
 # HALAMAN DOKUMEN SAYA
@@ -1818,14 +1976,215 @@ def halaman_Update_Presensi():
         else:
             st.info("📭 Database presensi kosong")
         
-        with tab33:
-            st.title("Data Presensi Saat Ini")
-            hidden_cols = ["Status Terbayar"]
-            db_data_presensi_tampil = db_data_presensi.copy()
-            db_data_presensi_tampil = db_data_presensi_tampil.drop(columns=hidden_cols, errors="ignore")
-            if 'ID_Magang' in db_data_presensi_tampil.columns:
-                db_data_presensi_tampil["ID_Magang"] = db_data_presensi_tampil["ID_Magang"].astype(str)
-            st.dataframe(db_data_presensi_tampil, use_container_width=True, height=600)
+    with tab33:
+        st.title("📋 Data Presensi Saat Ini")
+        
+        # ============================================
+        # FILTER PERIODE
+        # ============================================
+        with st.container(border=True):
+            st.markdown("##### 📅 Filter Periode Tanggal")
+            
+            col_periode1, col_periode2, col_periode3 = st.columns([2, 2, 1])
+            
+            with col_periode1:
+                # Tanggal Awal
+                if 'filter_tgl_awal' not in st.session_state:
+                    st.session_state.filter_tgl_awal = None
+                
+                tgl_awal_filter = st.date_input(
+                    "Tanggal Awal",
+                    value=None,
+                    key="filter_tgl_awal_tab33",
+                    format="DD/MM/YYYY"
+                )
+            
+            with col_periode2:
+                # Tanggal Akhir
+                if 'filter_tgl_akhir' not in st.session_state:
+                    st.session_state.filter_tgl_akhir = None
+                
+                tgl_akhir_filter = st.date_input(
+                    "Tanggal Akhir",
+                    value=None,
+                    key="filter_tgl_akhir_tab33",
+                    format="DD/MM/YYYY"
+                )
+            
+            with col_periode3:
+                st.markdown("<br>", unsafe_allow_html=True)  # Spacer
+                if st.button("🔄 Reset", use_container_width=True, key="reset_periode_tab33"):
+                    st.session_state.filter_tgl_awal_tab33 = None
+                    st.session_state.filter_tgl_akhir_tab33 = None
+                    st.rerun()
+        
+        # ============================================
+        # SIAPKAN DATA DENGAN KOLOM TANGGAL
+        # ============================================
+        # Copy data asli
+        db_data_presensi_tampil = db_data_presensi.copy()
+        
+        # Konversi kolom Tanggal ke datetime untuk filtering
+        if not db_data_presensi_tampil.empty and 'Tanggal' in db_data_presensi_tampil.columns:
+            db_data_presensi_tampil['Tanggal_dt'] = pd.to_datetime(
+                db_data_presensi_tampil['Tanggal'], 
+                format='%d/%m/%Y', 
+                errors='coerce'
+            )
+        
+        # ============================================
+        # APPLY FILTER PERIODE
+        # ============================================
+        df_filtered = db_data_presensi_tampil.copy()
+        
+        # Terapkan filter tanggal jika ada
+        if tgl_awal_filter and tgl_akhir_filter:
+            if tgl_awal_filter > tgl_akhir_filter:
+                st.error("❌ Tanggal awal harus lebih kecil atau sama dengan tanggal akhir!")
+            else:
+                mask = (
+                    (df_filtered['Tanggal_dt'] >= pd.Timestamp(tgl_awal_filter)) &
+                    (df_filtered['Tanggal_dt'] <= pd.Timestamp(tgl_akhir_filter))
+                )
+                df_filtered = df_filtered.loc[mask].copy()
+                
+                # Tampilkan info periode
+                tgl_awal_str = tgl_awal_filter.strftime('%d/%m/%Y')
+                tgl_akhir_str = tgl_akhir_filter.strftime('%d/%m/%Y')
+                st.info(f"📊 Menampilkan data periode **{tgl_awal_str} - {tgl_akhir_str}**")
+        
+        elif tgl_awal_filter or tgl_akhir_filter:
+            st.warning("⚠️ Harap isi kedua tanggal awal dan akhir untuk filter periode")
+        
+        # ============================================
+        # HAPUS KOLOM YANG TIDAK DITAMPILKAN
+        # ============================================
+        hidden_cols = ["Status Terbayar", "Tanggal_dt"]
+        for col in hidden_cols:
+            if col in df_filtered.columns:
+                df_filtered = df_filtered.drop(columns=[col])
+        
+        # Konversi ID_Magang ke string
+        if 'ID_Magang' in df_filtered.columns:
+            df_filtered["ID_Magang"] = df_filtered["ID_Magang"].astype(str)
+        
+        # ============================================
+        # TAMPILKAN INFORMASI DATA
+        # ============================================
+        col_info1, col_info2, col_info3 = st.columns(3)
+        
+        with col_info1:
+            st.metric("Total Data", len(df_filtered))
+        
+        with col_info2:
+            if not df_filtered.empty and 'ID_Magang' in df_filtered.columns:
+                unique_mahasiswa = df_filtered['ID_Magang'].nunique()
+                st.metric("Jumlah Mahasiswa", unique_mahasiswa)
+        
+        with col_info3:
+            if not df_filtered.empty and 'Tanggal' in df_filtered.columns:
+                # Hitung rentang tanggal
+                try:
+                    tanggal_dt = pd.to_datetime(df_filtered['Tanggal'], format='%d/%m/%Y', errors='coerce')
+                    tgl_min = tanggal_dt.min().strftime('%d/%m/%Y') if pd.notna(tanggal_dt.min()) else '-'
+                    tgl_max = tanggal_dt.max().strftime('%d/%m/%Y') if pd.notna(tanggal_dt.max()) else '-'
+                    st.metric("Rentang Tanggal", f"{tgl_min} - {tgl_max}")
+                except:
+                    st.metric("Rentang Tanggal", "-")
+        
+        st.divider()
+        
+        # ============================================
+        # TAMPILKAN DATAFRAME
+        # ============================================
+        if not df_filtered.empty:
+            # Tampilkan dataframe dengan styling
+            st.dataframe(
+                df_filtered,
+                height=600,
+                use_container_width=True,
+                column_config={
+                    "ID_Magang": "ID Magang",
+                    "Tanggal": "Tanggal",
+                    "Jam Masuk": "Jam Masuk",
+                    "Jam Pulang": "Jam Pulang",
+                    "Scan Masuk": "Scan Masuk",
+                    "Scan Keluar": "Scan Keluar",
+                    "Terlambat": "Terlambat",
+                    "Plg Cpt": "Pulang Cepat",
+                    "Lembur": "Lembur",
+                    "Jam Kerja": "Jam Kerja",
+                    "Jml Hadir": "Jml Hadir"
+                }
+            )
+            
+            # ============================================
+            # STATISTIK TAMBAHAN
+            # ============================================
+            with st.expander("📊 Statistik Tambahan", expanded=False):
+                col_stat1, col_stat2 = st.columns(2)
+                
+                with col_stat1:
+                    st.markdown("**Ringkasan per Mahasiswa**")
+                    if 'ID_Magang' in df_filtered.columns:
+                        mhs_summary = df_filtered.groupby('ID_Magang').size().reset_index()
+                        mhs_summary.columns = ['ID Magang', 'Jumlah Kehadiran']
+                        mhs_summary = mhs_summary.sort_values('Jumlah Kehadiran', ascending=False)
+                        st.dataframe(mhs_summary, use_container_width=True, height=200)
+                
+                with col_stat2:
+                    st.markdown("**Ringkasan per Bulan**")
+                    if 'Tanggal' in df_filtered.columns:
+                        # Ekstrak bulan dari tanggal
+                        df_filtered['Bulan'] = pd.to_datetime(
+                            df_filtered['Tanggal'], format='%d/%m/%Y', errors='coerce'
+                        ).dt.month
+                        
+                        bulan_summary = df_filtered.groupby('Bulan').size().reset_index()
+                        bulan_summary.columns = ['Bulan', 'Jumlah']
+                        
+                        # Mapping angka bulan ke nama bulan
+                        nama_bulan = {
+                            1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
+                            7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
+                        }
+                        bulan_summary['Bulan'] = bulan_summary['Bulan'].map(nama_bulan)
+                        
+                        st.dataframe(bulan_summary, use_container_width=True, height=200)
+                        
+                        # Hapus kolom Bulan setelah digunakan
+                        df_filtered = df_filtered.drop(columns=['Bulan'], errors='ignore')
+            
+            # ============================================
+            # TOMBOL DOWNLOAD
+            # ============================================
+            col_dl1, col_dl2, col_dl3 = st.columns([1, 2, 1])
+            with col_dl2:
+                # Konversi ke CSV untuk download
+                csv_data = df_filtered.to_csv(index=False).encode('utf-8')
+                
+                # Buat nama file dengan periode
+                if tgl_awal_filter and tgl_akhir_filter:
+                    periode_str = f"{tgl_awal_filter.strftime('%Y%m%d')}_{tgl_akhir_filter.strftime('%Y%m%d')}"
+                else:
+                    periode_str = "semua"
+                
+                st.download_button(
+                    label="📥 Download Data (CSV)",
+                    data=csv_data,
+                    file_name=f"data_presensi_{periode_str}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key="download_presensi_tab33"
+                )
+        else:
+            st.warning("⚠️ Tidak ada data presensi pada periode yang dipilih")
+            
+            # Tampilkan pesan jika database kosong
+            if db_data_presensi.empty:
+                st.info("📭 Database presensi masih kosong")
+            else:
+                st.info("📭 Tidak ada data pada periode filter. Coba atur ulang filter.")
 
 
 # =========================
