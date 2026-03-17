@@ -420,7 +420,7 @@ def show_sidebar():
             " ",
             [
                 "Entry Data",
-                "Magang Analytic",
+                "Data Analytic",
                 "Update Presensi",
                 "Rekapitulasi Kehadiran",
                 "Monitoring Timebreak"
@@ -430,7 +430,7 @@ def show_sidebar():
         # Mapping halaman
         menu_map = {
             "Entry Data": "pendaftaran",
-            "Magang Analytic": "Magang Analytic",
+            "Data Analytic": "Data Analytic",
             "Update Presensi": "Update Presensi",
             "Rekapitulasi Kehadiran": "Rekapitulasi Kehadiran",
             "Monitoring Timebreak": "monitoring_timebreak"
@@ -1470,7 +1470,7 @@ def halaman_Magang_Analytic():
 # HALAMAN DOKUMEN SAYA
 # =========================
 def halaman_Update_Presensi():
-    tab11, tab22, tab33 = st.tabs(["Input Data Presensi", "Perbarui Data Presensi", "Data Presensi"])
+    tab11, tab22, tab33 = st.tabs(["Input Data Presensi", "Hapus Periode Data", "Data Presensi"])
     
     with tab11:
         st.title("🟢Sistem Input Data Presensi")
@@ -3275,7 +3275,7 @@ def main():
 
     if st.session_state.current_page == 'pendaftaran':
         halaman_entry_data()
-    elif st.session_state.current_page == 'Magang Analytic':
+    elif st.session_state.current_page == 'Data Analytic':
         halaman_Magang_Analytic()
     elif st.session_state.current_page == 'Update Presensi':
         halaman_Update_Presensi()
