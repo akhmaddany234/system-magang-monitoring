@@ -683,7 +683,7 @@ def simpan_data_valid(data_valid, db_data_presensi):
 
 def update_data_duplikat(data_duplikat, df_absen, db_data_presensi):
     """
-    Fungsi untuk meng-update data duplikat
+    Fungsi untuk meng-update data duplikat secara BATCH (sekaligus)
     """
     try:
         # Ambil indeks dari data yang akan diupdate
@@ -699,11 +699,13 @@ def update_data_duplikat(data_duplikat, df_absen, db_data_presensi):
         # Ambil data dari file upload berdasarkan indeks
         data_update = df_absen.iloc[indeks_update].to_dict('records')
         
-        st.info(f"📝 Memproses {len(data_update)} data untuk diupdate...")
+        st.info(f"📝 Memproses {len(data_update)} data untuk diupdate secara BATCH...")
         
         # ========================================
-        # 1. HAPUS DATA LAMA
+        # 1. KUMPULKAN SEMUA ID + TANGGAL YANG AKAN DIHAPUS
         # ========================================
+        hapus_list = []  # List of tuples (id_magang, tanggal_str)
+        
         for item in data_duplikat:
             id_magang = str(item['ID_Magang'])
             tanggal = item['Tanggal']
@@ -718,15 +720,29 @@ def update_data_duplikat(data_duplikat, df_absen, db_data_presensi):
                 tgl_parsed = parse_tanggal_ke_string(tanggal)
                 tanggal_str = tgl_parsed if tgl_parsed else str(tanggal)
             
-            # Hapus data lama dari sheets
-            try:
-                hapus_data_dari_sheets("data_presensi", id_magang, tanggal_str)
-                st.write(f"✅ Menghapus data lama: ID {id_magang}, Tanggal {tanggal_str}")
-            except Exception as e:
-                st.warning(f"⚠️ Gagal menghapus data lama untuk ID {id_magang} tgl {tanggal_str}: {e}")
+            hapus_list.append((id_magang, tanggal_str))
         
         # ========================================
-        # 2. SIAPKAN DATA BARU
+        # 2. HAPUS SEMUA DATA LAMA SEKALIGUS (BATCH DELETE)
+        # ========================================
+        try:
+            success_hapus, msg_hapus = hapus_banyak_data_dari_sheets(
+                "data_presensi", 
+                hapus_list
+            )
+            
+            if not success_hapus:
+                st.error(f"❌ Gagal menghapus data lama: {msg_hapus}")
+                return False
+            else:
+                st.success(f"✅ Berhasil menghapus {len(hapus_list)} data lama")
+                
+        except Exception as e:
+            st.error(f"❌ Error saat menghapus data lama: {str(e)}")
+            return False
+        
+        # ========================================
+        # 3. SIAPKAN DATA BARU (SAMA SEPERTI SEBELUMNYA)
         # ========================================
         col_order = list(db_data_presensi.columns)
         data_baru = []
@@ -756,7 +772,7 @@ def update_data_duplikat(data_duplikat, df_absen, db_data_presensi):
             data_baru.append(baris)
         
         # ========================================
-        # 3. SIMPAN DATA BARU
+        # 4. SIMPAN SEMUA DATA BARU SEKALIGUS
         # ========================================
         if data_baru:
             success = append_to_sheet("data_presensi", data_baru)
@@ -774,6 +790,86 @@ def update_data_duplikat(data_duplikat, df_absen, db_data_presensi):
         st.error(f"❌ Gagal meng-update data: {str(e)}")
         return False
 
+
+def hapus_banyak_data_dari_sheets(sheet_name, hapus_list):
+    """
+    Menghapus banyak data sekaligus dari Google Sheets berdasarkan ID_Magang dan Tanggal
+    
+    Args:
+        sheet_name (str): Nama sheet
+        hapus_list (list): List of tuples [(id_magang1, tgl1), (id_magang2, tgl2), ...]
+    
+    Returns:
+        tuple: (success, message)
+    """
+    try:
+        worksheet = get_worksheet(sheet_name)
+        if not worksheet:
+            return False, "Gagal mendapatkan worksheet"
+        
+        # Ambil semua data
+        all_values = worksheet.get_all_values()
+        
+        if not all_values or len(all_values) <= 1:
+            return False, "Sheet kosong atau hanya berisi header"
+        
+        header = all_values[0]
+        
+        # Cari indeks kolom
+        try:
+            idx_id = header.index('ID_Magang')
+            idx_tgl = header.index('Tanggal')
+        except ValueError as e:
+            return False, f"Kolom ID_Magang atau Tanggal tidak ditemukan: {e}"
+        
+        # Buat set untuk lookup cepat
+        lookup_set = set()
+        for id_m, tgl in hapus_list:
+            # Normalisasi tanggal
+            tgl_normalized = tgl
+            # Coba berbagai format
+            try:
+                # Coba parse ke datetime lalu format ke YYYY-MM-DD
+                dt = pd.to_datetime(tgl)
+                tgl_normalized = dt.strftime('%Y-%m-%d')
+            except:
+                pass
+            
+            lookup_set.add((str(id_m).strip(), tgl_normalized))
+        
+        # Kumpulkan baris yang akan dihapus
+        baris_dihapus = []
+        
+        for i, row in enumerate(all_values[1:], start=2):  # mulai baris 2
+            if len(row) <= max(idx_id, idx_tgl):
+                continue
+                
+            row_id = str(row[idx_id]).strip()
+            row_tgl = str(row[idx_tgl]).strip()
+            
+            # Normalisasi tanggal dari sheet
+            row_tgl_normalized = row_tgl
+            try:
+                dt = pd.to_datetime(row_tgl, dayfirst=True)
+                row_tgl_normalized = dt.strftime('%Y-%m-%d')
+            except:
+                pass
+            
+            # Cek apakah ada di lookup_set
+            if (row_id, row_tgl_normalized) in lookup_set:
+                baris_dihapus.append(i)
+        
+        if not baris_dihapus:
+            return False, "Tidak ada data yang cocok untuk dihapus"
+        
+        # Hapus semua baris sekaligus (dari bawah ke atas)
+        for baris in sorted(baris_dihapus, reverse=True):
+            worksheet.delete_rows(baris)
+        
+        return True, f"Berhasil menghapus {len(baris_dihapus)} baris"
+        
+    except Exception as e:
+        return False, str(e)
 # =========================
 # FUNGSI REKAPITULASI KEHADIRAN
 # =========================
